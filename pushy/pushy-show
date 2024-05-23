@@ -1,0 +1,78 @@
+#!/bin/dash
+
+# check if pushy exisit first
+if ! [ -d ".pushy" ]; then
+    echo "$(basename "$0"): error: pushy repository directory .pushy not found"
+    exit 1
+fi
+
+
+if ! [ $# -eq 1 ]; then
+    # check if exactly one argument is given
+    echo "usage: $(basename "$0") <commit>:<filename>"
+    exit 1
+fi
+
+ARG_ALT=$(echo "$1" | sed 's/://g')
+if [ "$1" = "$ARG_ALT" ]; then
+    # if the argument doesn't contain :
+    echo "usage: $(basename "$0") <commit>:<filename>"
+    exit 1
+fi
+
+COMMIT=$(echo "$1" | cut -d':' -f1)
+FILENAME=$(echo "$1" | cut -d':' -f2)
+
+is_valid_filename() {
+    FILE=$1
+    # check if file name valid
+    if ! [ "$(echo "$FILE" | grep -E '^[a-zA-Z0-9][a-zA-Z0-9._-]*$')" ]; then
+        echo "$(basename "$0"): error: invalid filename '$FILE'"
+        exit 1
+    fi
+}
+
+is_valid_filename "$FILENAME"
+
+if [ -z "$FILENAME" ]; then
+    # if filename is given empty
+    echo "$(basename "$0"): error: invalid filename ''"
+    exit 1
+fi
+
+if [ -z "$COMMIT" ]; then
+    # check if commit number is a whitespace
+    # if it is, echo file in index
+    INDEX_PATH=.pushy/.index
+    if [ -f "$INDEX_PATH/$FILENAME" ]; then
+        # if file exist in index
+        cat "$INDEX_PATH/$FILENAME"
+        exit
+    else
+        echo "$(basename "$0"): error: '$FILENAME' not found in index"
+        exit 1
+    fi
+else
+    # if ! [ "$COMMIT" -eq "$COMMIT" ] 2> /dev/null; then
+    #     # check if commit number is an integer
+    #     echo "usage: $(basename "$0") <commit>:<filename>"
+    #     exit 1
+    # fi
+    # echo file in correct commit subdirectory
+    COMMIT_PATH=.pushy/.commits/.commit$COMMIT
+    if [ -d "$COMMIT_PATH" ]; then
+        # if that commit subdirectory exist
+        if [ -f "$COMMIT_PATH/$FILENAME" ]; then
+            # if file exist in subdirectory
+            cat "$COMMIT_PATH/$FILENAME"
+        else
+            echo "$(basename "$0"): error: '$FILENAME' not found in commit $COMMIT"
+            exit 1
+        fi
+    else 
+        # the commit subdirectory doesn't exist
+        echo "$(basename "$0"): error: unknown commit '$COMMIT'"
+        exit 1
+    fi
+fi
+

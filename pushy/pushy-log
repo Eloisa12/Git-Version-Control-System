@@ -1,0 +1,17 @@
+#!/bin/dash
+
+# check if pushy exisit first
+if ! [ -d ".pushy" ]; then
+    echo "$(basename "$0"): error: pushy repository directory .pushy not found"
+    exit 1
+fi
+
+if ! [ "$#" -eq 0 ]; then
+    echo "usage: $(basename "$0")"
+    exit 1
+fi
+
+FILE=.pushy/.logs/log
+if [ -f "$FILE" ]; then
+    cat "$FILE"
+fi

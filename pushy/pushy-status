@@ -1,0 +1,154 @@
+#!/bin/dash
+
+# check if pushy exisit first
+if ! [ -d ".pushy" ]; then
+    echo "$(basename "$0"): error: pushy repository directory .pushy not found"
+    exit 1
+fi
+
+LOG_DIR=.pushy/.logs
+LOG=$LOG_DIR/log
+COUNT=$(wc -l < "$LOG")
+LATEST_COUNT=$((COUNT - 1))
+COMMIT_DIR=.pushy/.commits
+LATEST_COMMIT=$COMMIT_DIR/.commit$LATEST_COUNT
+
+
+TRUE=0
+FALSE=1
+checkIfOnceCommit() {
+    FILE=$1
+    i=0
+    while [ $i -le "$LATEST_COUNT" ]; do
+        if [ -f ".pushy/.commits/.commit$i/$FILE" ]; then
+            # the file exist in commits for at least once
+            return $TRUE;
+        fi
+        i=$((i + 1))
+    done
+    return $FALSE;
+}
+
+INDEX_DIR=.pushy/.index
+HISTORY_DIR=.pushy/.history
+touch $LOG_DIR/status
+
+for FILE in *; do
+    # For all the file in working directory
+    if [ "$FILE" = "*" ]; then
+        continue
+    fi
+
+    if ! [ -f "$HISTORY_DIR/$FILE" ]; then
+        # if a file is never tracked
+        echo "$FILE - untracked" >> $LOG_DIR/status
+        continue
+    fi
+
+    if ! [ -f "$INDEX_DIR/$FILE"  ]; then
+        # If the file was tracked, but not in index
+        if [ -f "$LATEST_COMMIT/$FILE" ]; then
+            # If the file once commited, means it got removed
+            echo "$FILE - deleted from index" >> $LOG_DIR/status
+            continue
+        else
+            # If never commited, then the file is untracked
+            echo "$FILE - untracked" >> $LOG_DIR/status
+            continue
+        fi
+    fi
+
+    if [ "$COUNT" -eq 0 ]; then
+        # No commit yet
+        if [ -f "$INDEX_DIR/$FILE" ]; then
+            # file already staged to index
+            echo "$FILE - added to index" >> $LOG_DIR/status
+            continue
+        fi
+    else
+        # there us at least one commit
+        if [ -f "$INDEX_DIR/$FILE" ] && ! [ -f "$LATEST_COMMIT/$FILE" ]; then
+            # if file in index but not in latest commit
+            if diff "$FILE" "$INDEX_DIR/$FILE" >/dev/null 2>&1; then
+                # if working file is same as index
+                echo "$FILE - added to index" >> $LOG_DIR/status
+                continue
+            else 
+                # if working file is different from index
+                echo "$FILE - added to index, file changed" >> $LOG_DIR/status
+                continue
+            fi
+        fi
+
+        if [ -f "$LATEST_COMMIT/$FILE" ]; then
+            # if file is in the latest commit
+            if diff "$FILE" "$LATEST_COMMIT/$FILE" >/dev/null 2>&1; then
+                # if file unchanged after commit
+                echo "$FILE - same as repo" >> $LOG_DIR/status
+                continue
+            else
+                # if file changed after commit
+                if diff "$FILE" "$INDEX_DIR/$FILE" >/dev/null 2>&1; then
+                    # if working file is same as index, changes has staged
+                    echo "$FILE - file changed, changes staged for commit" >> $LOG_DIR/status
+                    continue
+                else
+                    # if working file is different from index
+                    if diff "$LATEST_COMMIT/$FILE" "$INDEX_DIR/$FILE" >/dev/null 2>&1; then
+                        # if index file is still same as the latest commit
+                        # means changes havn't been staged
+                        echo "$FILE - file changed, changes not staged for commit" >> $LOG_DIR/status
+                        continue
+                    else
+                        # if index file is different from latest commit
+                        echo "$FILE - file changed, different changes staged for commit" >> $LOG_DIR/status
+                        continue
+                    fi
+                fi
+            fi
+        fi
+    fi
+done
+
+for FILE in "$HISTORY_DIR"/*; do
+    # for all the file that was tracked in the history
+    FILE_ALT="$(basename "$FILE")"
+    if ! [ -f "$FILE_ALT" ]; then
+        # If it is not in working directory anymore -> means it got removed
+        if checkIfOnceCommit "$FILE_ALT"; then
+            # If the file once commited
+            if [ -f "$INDEX_DIR/$FILE_ALT" ]; then
+                # If file still in index
+                echo "$FILE_ALT - file deleted" >> $LOG_DIR/status
+                continue
+            else
+                if [ -f "$LATEST_COMMIT/$FILE_ALT" ]; then
+                # If file is not in latest commit anymore
+                    if diff "$HISTORY_DIR/$FILE_ALT" "$LATEST_COMMIT/$FILE_ALT"; then
+                        # If the file doesn't change after latest commit
+                        echo "$FILE_ALT - file deleted, deleted from index" >> $LOG_DIR/status
+                        continue
+                    else
+                        # If file changed after latest commit
+                        echo "$FILE_ALT - file deleted, changes staged for commit" >> $LOG_DIR/status
+                        continue
+                    fi
+                fi
+            fi
+        else
+            # If the file never commited
+            if [ -f "$INDEX_DIR/$FILE_ALT" ]; then
+                # if file still in index -> rm
+                echo "$FILE_ALT - added to index, file deleted" >> $LOG_DIR/status
+                continue
+            else
+                # file not in index -> pushy-rm
+                continue
+            fi
+        fi
+    fi
+done
+
+# Put all data to a file and sort it
+sort $LOG_DIR/status
+rm $LOG_DIR/status

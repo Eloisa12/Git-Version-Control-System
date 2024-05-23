@@ -1,0 +1,27 @@
+#!/bin/dash
+
+if ! [ $# -eq 0 ]; then
+    echo "usage: $(basename "$0")"
+    exit 1
+fi
+
+if [ -d ".pushy" ]; then
+    # if .pushy directory exists
+    echo "$(basename "$0"): error: .pushy already exists"
+    exit 1
+fi
+
+if [ -f ".pushy" ]; then
+    # if .pushy file exists
+    echo "$(basename "$0"): error: .pushy already exists"
+    exit 1
+fi
+
+mkdir .pushy
+mkdir .pushy/.logs
+touch .pushy/.logs/log
+touch .pushy/.logs/status
+mkdir .pushy/.commits
+mkdir .pushy/.index
+mkdir .pushy/.history
+echo "Initialized empty pushy repository in .pushy"

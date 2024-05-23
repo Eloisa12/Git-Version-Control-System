@@ -1,0 +1,193 @@
+#!/bin/dash
+
+remove_normal() {
+    FILE=$1
+    INDEX_DIR=.pushy/.index
+
+    if ! [ -f "$INDEX_DIR/$FILE" ]; then
+        # check if file in repo
+        echo "$(basename "$0"): error: '$FILE' is not in the pushy repository"
+        exit 1
+    fi
+
+    # check if changes has been commited
+    COMMIT_DIR=.pushy/.commits
+    LOG=.pushy/.logs/log
+    COUNT=$(wc -l < "$LOG")
+    LATEST_COUNT=$((COUNT - 1))
+    LATEST_COMMIT=$COMMIT_DIR/.commit$LATEST_COUNT
+
+    if [ $LATEST_COUNT -lt 0 ]; then
+        # there is no commit yet but file has staged changes to index
+        if ! diff "$FILE" "$INDEX_DIR/$FILE" >/dev/null 2>&1; then
+            # if working file is different from index
+            echo "$(basename "$0"): error: '$FILE' has staged changes in the index"
+            exit 1
+        fi
+    fi
+
+    if (! diff "$FILE" "$INDEX_DIR/$FILE" >/dev/null 2>&1) && (! diff "$LATEST_COMMIT/$FILE" "$INDEX_DIR/$FILE") >/dev/null 2>&1; then
+        # if index file different to both repo and working file
+        echo "$(basename "$0"): error: '$FILE' in index is different to both the working file and the repository"
+        exit 1
+    fi
+
+    if ! diff "$LATEST_COMMIT/$FILE" "$INDEX_DIR/$FILE" >/dev/null 2>&1; then
+        # if file in index is different to latest commit
+        if diff "$FILE" "$INDEX_DIR/$FILE" >/dev/null 2>&1; then
+            # if the file didn't get modified after add
+            echo "$(basename "$0"): error: '$FILE' has staged changes in the index"
+            exit 1
+        fi
+    fi
+
+    if ! diff "$FILE" "$LATEST_COMMIT/$FILE" >/dev/null 2>&1; then
+        # If the file get modified but didn't add to index yet
+        echo "$(basename "$0"): error: '$FILE' in the repository is different to the working file"
+        exit 1
+    fi
+
+
+    rm "$INDEX_DIR/$FILE"
+    if [ -f "$FILE" ]; then
+        # if this file exist 
+        rm "$FILE"
+    fi
+}
+
+remove_cached() {
+    FILE=$1
+    INDEX_DIR=.pushy/.index
+    COMMIT_DIR=.pushy/.commits
+    LOG=.pushy/.logs/log
+    COUNT=$(wc -l < "$LOG")
+    LATEST_COUNT=$((COUNT - 1))
+    LATEST_COMMIT=$COMMIT_DIR/.commit$LATEST_COUNT
+    
+    if ! [ -f "$INDEX_DIR/$FILE" ]; then
+        # check if file in repo
+        echo "$(basename "$0"): error: '$FILE' is not in the pushy repository"
+        exit 1
+    fi
+
+    if (! diff "$FILE" "$INDEX_DIR/$FILE" >/dev/null 2>&1) && (! diff "$LATEST_COMMIT/$FILE" "$INDEX_DIR/$FILE") >/dev/null 2>&1; then
+        # if different to both repo and working file
+        echo "$(basename "$0"): error: '$FILE' in index is different to both the working file and the repository"
+        exit 1
+    fi
+
+    rm "$INDEX_DIR/$FILE"
+}
+
+remove_force() {
+    FILE=$1
+    ISCACHED=$2
+    INDEX_DIR=.pushy/.index
+    HISTORY_DIR=.pushy/.history
+
+    if ! [ -f "$INDEX_DIR/$FILE" ]; then
+        # check if file in repo
+        echo "$(basename "$0"): error: '$FILE' is not in the pushy repository"
+        exit 1
+    fi
+
+    if [ "$ISCACHED" -eq 0 ]; then
+        # if not cached: remove from working dir and index
+        if [ -f "$FILE" ]; then
+            # if this file exist 
+            rm "$FILE"
+        fi
+    fi
+    # remove from index
+    rm "$INDEX_DIR/$FILE"
+}
+
+is_valid_filename() {
+    FILE=$1
+    # check if file name valid
+    if ! [ "$(echo "$FILE" | grep -E '^[a-zA-Z0-9][a-zA-Z0-9._-]*$')" ]; then
+        echo "$(basename "$0"): error: invalid filename '$FILE'"
+        exit 1
+    fi
+}
+
+# check if pushy exist first
+if ! [ -d ".pushy" ]; then
+    echo "$(basename "$0"): error: pushy repository directory .pushy not found"
+    exit 1
+fi
+
+if [ "$1" = "--cached" ]; then
+    # case cached: stops tracking the file in index
+    shift
+    if [ "$#" -eq 0 ]; then
+        # check correct arguments number
+        echo "usage: $(basename "$0") [--force] [--cached] <filenames>"
+        exit 1
+    else
+        if [ "$(echo "$1" | grep -E '^[-][a-zA-Z0-9._-]*$')" ]; then
+            # check if file starts with -
+            echo "usage: $(basename "$0") [--force] [--cached] <filenames>"
+            exit 1
+        fi
+    fi
+    for FILE in "$@" ; do
+        is_valid_filename "$FILE"
+        remove_cached "$FILE"
+    done
+elif [ "$1" = "--force" ]; then
+    shift
+    if [ "$1" = "--cached" ]; then
+        # case force: remove from index anyway
+        shift
+        if [ "$#" -eq 0 ]; then
+            # check correct arguments number
+            echo "usage: $(basename "$0") [--force] [--cached] <filenames>"
+            exit 1
+        else
+            if [ "$(echo "$1" | grep -E '^[-][a-zA-Z0-9._-]*$')" ]; then
+                # check if file starts with -
+                echo "usage: $(basename "$0") [--force] [--cached] <filenames>"
+                exit 1
+            fi
+        fi
+        for FILE in "$@" ; do
+            is_valid_filename "$FILE"
+            remove_force "$FILE" 1
+        done
+    else
+        if [ "$#" -eq 0 ]; then
+            # check correct arguments number
+            echo "usage: $(basename "$0") [--force] [--cached] <filenames>"
+            exit 1
+        else
+            # check if file starts with -
+            if [ "$(echo "$1" | grep -E '^[-][a-zA-Z0-9._-]*$')" ]; then
+                echo "usage: $(basename "$0") [--force] [--cached] <filenames>"
+                exit 1
+            fi
+        fi
+        # case force: remove from current and index anyway
+        for FILE in "$@" ; do
+            is_valid_filename "$FILE"
+            remove_force "$FILE" 0
+        done
+    fi
+else
+    if [ "$#" -eq 0 ]; then
+        # check correct arguments number
+        echo "usage: $(basename "$0") [--force] [--cached] <filenames>"
+        exit 1
+    else
+        if [ "$(echo "$1" | grep -E '^[-][a-zA-Z0-9._-]*$')" ]; then
+            # check if file starts with -
+            echo "usage: $(basename "$0") [--force] [--cached] <filenames>"
+            exit 1
+        fi
+    fi
+    # normal remove
+    for FILE in "$@"; do
+        is_valid_filename "$FILE"
+        remove_normal "$FILE"
+    done
+fi

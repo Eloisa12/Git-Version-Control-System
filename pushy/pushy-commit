@@ -1,0 +1,96 @@
+#!/bin/dash
+
+create_commit() {
+    COMMIT_MSG=$1
+    COMMIT_DIR=.pushy/.commits
+    INDEX_DIR=.pushy/.index
+    LOG=.pushy/.logs/log
+    COUNT=$(wc -l < "$LOG")
+    LATEST_COUNT=$((COUNT - 1))
+    LATEST_COMMIT=$COMMIT_DIR/.commit$LATEST_COUNT
+    # if there is no commit yet
+    if [ "$COUNT" -eq 0 ]; then
+        if [ $(ls "$INDEX_DIR" | wc -l) -eq 0 ]; then
+            # and if index is empty
+            echo "nothing to commit"
+            exit 1
+        fi
+    else
+        # if there is at least one commit
+        if diff "$INDEX_DIR" "$LATEST_COMMIT" >/dev/null 2>&1; then
+            # index is the same as latest commit
+            echo "nothing to commit"
+            exit 1
+        fi
+    fi
+    cp -r $INDEX_DIR $COMMIT_DIR
+    mv "$COMMIT_DIR/.index" "$COMMIT_DIR/.commit$COUNT"
+    echo "Committed as commit $COUNT"
+    # logging
+    echo "$COUNT $COMMIT_MSG" >> $LOG
+    TEMP=.pushy/.logs/sorted_log
+    sort -t" " -n -k2 -r $LOG > $TEMP
+    mv $TEMP $LOG
+}
+
+create_commit_a() {
+    COMMIT_MSG=$1
+    INDEX_DIR=.pushy/.index
+    for INDEX_FILE in "$INDEX_DIR"/*; do
+        FILE_ALT="${INDEX_FILE##*/}"
+        if [ -f "$FILE_ALT" ]; then
+            if ! diff "$FILE_ALT" "$INDEX_DIR/$FILE_ALT" >/dev/null 2>&1; then
+                # if files in index is different from lastest pushy-add
+                set -- "$FILE_ALT"
+                . pushy-add
+            fi
+        else
+            # ignore removed file
+            continue
+        fi
+    done
+    create_commit "$COMMIT_MSG"
+}
+
+# check if pushy exisit first
+if ! [ -d ".pushy" ]; then
+    echo "$(basename "$0"): error: pushy repository directory .pushy not found"
+    exit 1
+fi
+
+# case pushy-commit -m message
+if [ "$1" = "-m" ]; then
+    shift
+    if ! [ "$#" -eq 1 ]; then
+        echo "usage: $(basename "$0") [-a] -m commit-message"
+        exit 1
+    fi
+    COMMIT_MSG=$1
+    if [ "$COMMIT_MSG" = "" ]; then
+        # if commit message is empty string
+        echo "usage: $(basename "$0") [-a] -m commit-message"
+        exit 1
+    fi
+    create_commit "$COMMIT_MSG"
+
+# case pushy-commit -a -m message, staged all added file
+elif [ "$1" = "-a" ]; then
+    shift
+    if [ "$1" = "-m" ]; then
+        shift
+        if ! [ "$#" -eq 1 ]; then
+            echo "usage: $(basename "$0") [-a] -m commit-message"
+            exit 1
+        fi
+        COMMIT_MSG=$1
+        if [ "$COMMIT_MSG" = "" ]; then
+            # if commit message is empty string
+            echo "usage: $(basename "$0") [-a] -m commit-message"
+            exit 1
+        fi
+        create_commit_a "$COMMIT_MSG"
+    fi
+else
+    echo "usage: $(basename "$0") [-a] -m commit-message"
+    exit 1
+fi

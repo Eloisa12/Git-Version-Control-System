@@ -1,0 +1,46 @@
+#!/bin/dash
+
+is_valid_filename() {
+    FILE=$1
+    # check if file name valid
+    if ! [ "$(echo "$FILE" | grep -E '^[a-zA-Z0-9][a-zA-Z0-9._-]*$')" ]; then
+        echo "$(basename "$0"): error: invalid filename '$FILE'"
+        exit 1
+    fi
+}
+
+HISTORY_DIR=.pushy/.history
+INDEX_DIR=.pushy/.index
+if ! [ -d "$INDEX_DIR" ]; then
+    echo "$(basename "$0"): error: pushy repository directory .pushy not found"
+    exit 1
+fi
+
+if ! [ $# -ge 1 ]; then
+    echo "usage: $(basename "$0") <filenames>"
+fi
+
+for FILE in "$@"; do
+    if [ "$(echo "$1" | grep -E '^[-][a-zA-Z0-9._-]*$')" ]; then
+        # check if file starts with -
+        echo "usage: $(basename "$0") <filenames>"
+        exit 1
+    fi
+
+    is_valid_filename "$FILE"
+    
+    if ! [ -f "$FILE" ]; then
+        # If file is not in working directory
+        if [ -f "$INDEX_DIR/$FILE" ]; then
+            # If file is in index, record the deletion in index
+            rm "$INDEX_DIR/$FILE"
+        else
+            echo "$(basename "$0"): error: can not open '$FILE'"
+            exit 1
+        fi
+    else
+        # If file is in working directory, update to index
+        cp "$FILE" "$INDEX_DIR"
+        cp "$FILE" "$HISTORY_DIR"
+    fi
+done
